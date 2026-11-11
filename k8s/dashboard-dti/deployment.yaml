@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-dti
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-dti
+  template:
+    metadata:
+      labels:
+        app: dashboard-dti
+    spec:
+      # If the GHCR package is private, create a pull secret and uncomment this:
+      #   kubectl create secret docker-registry ghcr-pull \
+      #     --docker-server=ghcr.io --docker-username=<gh-user> --docker-password=<PAT-with-read:packages>
+      # imagePullSecrets:
+      # - name: ghcr-pull
+      containers:
+      - name: dashboard
+        image: ghcr.io/zest-eu/data-dashboard:latest
+        imagePullPolicy: Always    # :latest -> re-pull the newest release on restart
+        # image: data-dashboard
+        # imagePullPolicy: Never    # For local development
+        ports:
+        - containerPort: 80
+        # This dashboard instance is pinned to the DTI tenant. nginx bakes these
+        # into its proxy at container start — one tenant per container (see the
+        # dashboard repo's README). The upstreams are this stack's k8s Services.
+        env:
+        - name: ORION_URL
+          value: http://orion:1026
+        - name: QUANTUMLEAP_URL
+          value: http://quantumleap:8668
+        - name: ORION_TENANT
+          value: dti
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10

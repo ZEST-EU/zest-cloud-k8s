@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-db
+  template:
+    metadata:
+      labels:
+        app: postgres-db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: zest
+        - name: POSTGRES_DB
+          value: zest
+        # Dev-grade inline credential, matching the rest of this repo. The real
+        # access control is the loadBalancerSourceRanges allowlist in service.yaml
+        # plus this (non-default) password. CHANGE THIS before deploying.
+        - name: POSTGRES_PASSWORD
+          value: zest
+        # A freshly provisioned ReadWriteOnce volume (e.g. a GKE ext4 Persistent
+        # Disk) contains a lost+found dir at its root, so Postgres initdb refuses
+        # to initialize in /var/lib/postgresql/data ("directory not empty"). Point
+        # PGDATA at a subdirectory of the mount so initdb always gets a clean dir.
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgres-pvc

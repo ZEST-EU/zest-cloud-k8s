@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - name: provisioning
+          mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+          subPath: datasources.yaml
+        - name: provisioning
+          mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+          subPath: dashboards.yaml
+        - name: provisioning
+          mountPath: /var/lib/grafana/dashboards/device-measurements.json
+          subPath: device-measurements.json
+      volumes:
+      - name: provisioning
+        configMap:
+          name: grafana-provisioning

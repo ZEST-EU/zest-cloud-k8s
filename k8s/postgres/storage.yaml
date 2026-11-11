@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  # No storageClassName: bind to the cluster's default StorageClass, which exists
+  # on both minikube ("standard", hostpath) and GKE ("standard-rwo", provisions a
+  # managed Persistent Disk). Avoids the node-local hostPath PV pattern.
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

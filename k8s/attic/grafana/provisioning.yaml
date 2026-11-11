@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: CrateDB
+        type: postgres
+        access: proxy
+        url: crate-db:5432
+        database: doc
+        user: crate
+        isDefault: true
+        jsonData:
+          sslmode: disable
+          postgresVersion: 1200
+          timescaledb: false
+
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: ""
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards
+
+  # NOTE: this dashboard assumes QuantumLeap stores DeviceMeasurement entities
+  # (see k8s/orion/subscriptions-setup.yaml) in CrateDB as table
+  # "doc.etdevicemeasurement" with columns "time_index", "entity_id" and
+  # "numvalue" - this is QuantumLeap's default naming (TYPE_PREFIX "et" +
+  # lowercased entity type, no fiware-service tenant prefix/schema since none
+  # is set on the subscription). Confirmed against a running cluster via:
+  #   curl -X POST crate-db:4200/_sql -d '{"stmt":"SHOW TABLES"}'
+  #   curl -X POST crate-db:4200/_sql -d '{"stmt":"SELECT column_name, data_type FROM information_schema.columns WHERE table_name='"'"'etdevicemeasurement'"'"'"}'
+  # Re-check these if you're on a different QuantumLeap version.
+  #
+  # Only "numValue"/"dateObserved"/"unit" are listed in the subscription's
+  # notification.attributes, so those (plus entity_id/entity_type) are the
+  # only columns QuantumLeap ever populates - "measurementType" lives on the
+  # entity in Orion but never reaches CrateDB. Panels below are split per
+  # entity_id instead, matching the two entities scripts/send_mock_measurements.py
+  # creates (FlowRate:001, Temperature:001).
+  device-measurements.json: |
+    {
+      "title": "Device Measurements",
+      "uid": "device-measurements",
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "id": 1,
+          "title": "FlowRate:001 - numValue over time",
+          "type": "timeseries",
+          "gridPos": { "h": 12, "w": 12, "x": 0, "y": 0 },
+          "datasource": { "type": "postgres", "uid": "CrateDB" },
+          "targets": [
+            {
+              "datasource": { "type": "postgres", "uid": "CrateDB" },
+              "rawSql": "SELECT time_index AS \"time\", numvalue AS \"value\" FROM doc.etdevicemeasurement WHERE entity_id = 'urn:ngsi-ld:DeviceMeasurement:FlowRate:001' AND $__timeFilter(time_index) ORDER BY 1",
+              "format": "time_series",
+              "rawQuery": true,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Temperature:001 - numValue over time",
+          "type": "timeseries",
+          "gridPos": { "h": 12, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "postgres", "uid": "CrateDB" },
+          "targets": [
+            {
+              "datasource": { "type": "postgres", "uid": "CrateDB" },
+              "rawSql": "SELECT time_index AS \"time\", numvalue AS \"value\" FROM doc.etdevicemeasurement WHERE entity_id = 'urn:ngsi-ld:DeviceMeasurement:Temperature:001' AND $__timeFilter(time_index) ORDER BY 1",
+              "format": "time_series",
+              "rawQuery": true,
+              "refId": "A"
+            }
+          ]
+        }
+      ],
+      "time": { "from": "now-24h", "to": "now" }
+    }

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db
+spec:
+  type: LoadBalancer
+  # --- External access control: user-managed IP allowlist ---
+  # Only the CIDRs listed here may reach port 5432. This is deny-by-default: the
+  # placeholder below is NOT your IP, so nobody can connect until you replace it.
+  #   1. Find your public IP:   curl -s ifconfig.me
+  #   2. Set it below as <ip>/32 (add more lines to allow more clients).
+  #   3. Re-apply:              kubectl apply -f k8s/postgres/service.yaml
+  # On GKE this narrows the LoadBalancer's firewall rule to exactly these ranges
+  # (without it, GKE would open 5432 to 0.0.0.0/0). Edit + re-apply any time.
+  loadBalancerSourceRanges:
+  - 213.196.96.223/32            # <-- REPLACE with your IP, e.g. $(curl -s ifconfig.me)/32
+  # Optional: pin a reserved REGIONAL static IP (in the cluster's region) so the
+  # workbench endpoint stays stable across redeploys. Reserve it first with:
+  #   gcloud compute addresses create zest-postgres-ip --region <region>
+  #   gcloud compute addresses describe zest-postgres-ip --region <region> --format='value(address)'
+  # then uncomment and paste the address:
+  loadBalancerIP: 34.159.119.157
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    app: postgres-db

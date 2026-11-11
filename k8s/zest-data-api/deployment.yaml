@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zest-data-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zest-data-api
+  template:
+    metadata:
+      labels:
+        app: zest-data-api
+    spec:
+      # If the GHCR package is private, create a pull secret and uncomment this:
+      #   kubectl create secret docker-registry ghcr-pull \
+      #     --docker-server=ghcr.io --docker-username=<gh-user> --docker-password=<PAT-with-read:packages>
+      # imagePullSecrets:
+      # - name: ghcr-pull
+
+      # Apply the Alembic migrations against postgres-db before the API starts.
+      # Idempotent (a no-op when already at head); re-runs on every rollout. If
+      # postgres-db is not up yet the pod restarts until this succeeds.
+      initContainers:
+      - name: migrate
+        image: ghcr.io/zest-eu/zest-data-api:latest
+        imagePullPolicy: Always
+        # image: data-api:latest
+        # imagePullPolicy: Never    # For local development
+        command: ["alembic", "upgrade", "head"]
+        env:
+        - name: ZEST_API_DATABASE_URL
+          value: postgresql+psycopg://zest:zest@postgres-db:5432/zest
+
+      containers:
+      - name: api
+        image: ghcr.io/zest-eu/zest-data-api:latest
+        imagePullPolicy: Always    # :latest -> re-pull the newest release on restart
+        # image: data-api:latest
+        # imagePullPolicy: Never    # For local development
+        ports:
+        - containerPort: 8091
+        env:
+        # In-cluster DNS name of the standalone relational DB (k8s/postgres).
+        - name: ZEST_API_DATABASE_URL
+          value: postgresql+psycopg://zest:zest@postgres-db:5432/zest
+        # The dashboard reaches this API same-origin through its nginx proxy, so
+        # no browser CORS is needed in-cluster.
+        - name: ZEST_API_CORS_ORIGINS
+          value: "[]"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8091
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8091
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi

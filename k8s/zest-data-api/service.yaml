@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: zest-data-api
+spec:
+  # ClusterIP: the API is an internal service. In production the dashboard's nginx
+  # reverse-proxies to it same-origin at http://zest-data-api:8091 (DATA_API_URL).
+  # For external access (e.g. a local dashboard dev server, or uploading data):
+  #   kubectl port-forward svc/zest-data-api 8091:8091
+  #
+  # To expose it publicly instead, switch to a firewalled LoadBalancer like
+  # k8s/postgres/service.yaml:
+  #   type: LoadBalancer
+  #   loadBalancerSourceRanges: ["<your-ip>/32"]
+  type: ClusterIP
+  selector:
+    app: zest-data-api
+  ports:
+  - port: 8091
+    targetPort: 8091
