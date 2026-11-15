@@ -48,6 +48,18 @@ spec:
         # no browser CORS is needed in-cluster.
         - name: ZEST_API_CORS_ORIGINS
           value: "[]"
+        # Object storage for dataset files (k8s/minio). Dev-grade inline creds,
+        # matching the rest of this repo. CHANGE THESE before deploying for real.
+        - name: ZEST_API_STORAGE_ENDPOINT
+          value: minio:9000
+        - name: ZEST_API_STORAGE_ACCESS_KEY
+          value: zest
+        - name: ZEST_API_STORAGE_SECRET_KEY
+          value: zest-minio-dev
+        - name: ZEST_API_STORAGE_BUCKET
+          value: datasets
+        - name: ZEST_API_STORAGE_SECURE
+          value: "false"
         readinessProbe:
           httpGet:
             path: /health

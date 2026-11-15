@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+      - name: minio
+        image: minio/minio
+        args: ["server", "/data", "--console-address", ":9001"]
+        ports:
+        - containerPort: 9000   # S3 API
+        - containerPort: 9001   # web console
+        env:
+        # Dev-grade inline credentials, matching the rest of this repo. MinIO
+        # requires the root password to be at least 8 characters. CHANGE THIS
+        # before deploying anywhere real.
+        - name: MINIO_ROOT_USER
+          value: zest
+        - name: MINIO_ROOT_PASSWORD
+          value: zest-minio-dev
+        readinessProbe:
+          httpGet:
+            path: /minio/health/ready
+            port: 9000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /minio/health/live
+            port: 9000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        volumeMounts:
+        - name: minio-data
+          mountPath: /data
+      volumes:
+      - name: minio-data
+        persistentVolumeClaim:
+          claimName: minio-pvc

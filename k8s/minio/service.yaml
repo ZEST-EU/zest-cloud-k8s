@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+spec:
+  # ClusterIP: internal only. zest-data-api reaches the S3 API at http://minio:9000.
+  # For the web console (admin): kubectl port-forward svc/minio 9001:9001 -> :9001.
+  # To expose either externally, switch to a firewalled LoadBalancer like
+  # k8s/postgres/service.yaml (loadBalancerSourceRanges).
+  type: ClusterIP
+  selector:
+    app: minio
+  ports:
+  - name: s3
+    port: 9000
+    targetPort: 9000
+  - name: console
+    port: 9001
+    targetPort: 9001

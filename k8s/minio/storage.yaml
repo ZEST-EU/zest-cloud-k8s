@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+spec:
+  # No storageClassName: bind to the cluster's default StorageClass (minikube
+  # "standard" / GKE "standard-rwo"), identical to postgres-pvc.
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

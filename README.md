@@ -14,8 +14,14 @@ This is step one of the ZEST cloud platform: the core FIWARE context broker stac
 │   ├── mongo/
 │   ├── quantumleap/
 │   ├── cratedb/
-│   └── grafana/
+│   ├── grafana/
+│   ├── dashboard-biopc/   # ZEST dashboard pinned to the BioPC tenant
+│   ├── dashboard-dti/     # ZEST dashboard pinned to the DTI tenant
+│   ├── postgres/
+│   ├── minio/             # S3-compatible object store for experimental dataset files
+│   └── zest-data-api/     # experimental-dataset API over postgres + minio (see ../zest-data-api)
 ├── manage.sh
+├── setup-steps.md
 └── scripts
     └── send_mock_measurements.py
 ```
@@ -45,6 +51,35 @@ CrateDB is a distributed SQL database that serves as the time-series backend for
 #### 5. Grafana
 
 Grafana provides dashboards over the time-series data QuantumLeap has written to CrateDB. It connects to CrateDB using Grafana's built-in PostgreSQL data source (CrateDB is wire-compatible with PostgreSQL). The data source and a starter dashboard are provisioned automatically from `k8s/grafana/provisioning.yaml` on pod startup, so there's nothing to click through manually to get a first chart.
+
+#### 6. MinIO
+
+An S3-compatible object store (`minio/minio`) that holds the **files** of experimental fermentation
+datasets. Deployed as a `ClusterIP` Service `minio` (`:9000` S3 API, `:9001` web console) backed by a
+`minio-pvc` PersistentVolumeClaim. `zest-data-api` writes/reads dataset objects here; the web console is
+reachable with `kubectl port-forward svc/minio 9001:9001`. Credentials are dev-grade inline env
+(`zest` / `zest-minio-dev`) — change before any real deployment.
+
+#### 7. zest-data-api
+
+A FastAPI service (built in the sibling `../zest-data-api` repo) that stores and serves **experimental
+fermentation datasets** — a relational flow entirely separate from the Orion → QuantumLeap → CrateDB
+time-series pipeline above. Dataset **files** go to **MinIO**; dataset **metadata** and the structured
+ZEST data model live in `postgres-db`. It exposes a REST API (generic multi-file upload + list +
+download) consumed by the ZEST dashboard's "Datasets" tab. Deployed as a `ClusterIP` Service on `:8091`;
+an initContainer runs `alembic upgrade head` against `postgres-db` before the API starts. The image is
+`ghcr.io/zest-eu/zest-data-api:latest` (built by that repo's CI).
+
+Deploy (needs `postgres-db` + `minio` running first, and the GHCR image pullable — add a `ghcr-pull`
+imagePullSecret if the package is private):
+
+```bash
+kubectl apply -f k8s/postgres/        # if not already up
+kubectl apply -f k8s/minio/           # object store for dataset files
+kubectl apply -f k8s/zest-data-api/
+kubectl rollout status deploy/zest-data-api
+kubectl port-forward svc/zest-data-api 8091:8091   # then http://localhost:8091/docs
+```
 
 ### Data Flow
 
@@ -114,11 +149,44 @@ Key features:
 - Time-series data optimization
 - Horizontal scalability
 
+### ZEST Dashboard (per tenant)
+
+The React dashboard (built + served by nginx — image
+`ghcr.io/zest-eu/data-dashboard`, from the sibling `zest-dashboard` repo) is a
+lightweight alternative to Grafana: it lists the live `DeviceMeasurement`
+entities from Orion and charts each one's history from QuantumLeap. The nginx
+layer also reverse-proxies the browser's `/api/*` calls to Orion/QuantumLeap and
+injects the required FIWARE headers.
+
+The tenant a dashboard shows is **fixed per container** (nginx bakes the
+`NGSILD-Tenant` header in at startup), so there is **one deployment per tenant**:
+
+| Component | Tenant (`ORION_TENANT`) | External port | URL under `minikube tunnel` |
+|---|---|---|---|
+| `dashboard-biopc` | `opcua_biopc` | 8080 | http://localhost:8080 |
+| `dashboard-dti` | `dti` | 8081 | http://localhost:8081 |
+
+To point at a different tenant, or to add another, copy one of the
+`k8s/dashboard-*/` directories and change `ORION_TENANT` (and the Service `port`)
+— the image is identical. The image is pulled from GHCR; if the package is
+private, create a pull secret and reference it (see the commented block in the
+deployment manifests).
+
+> **QuantumLeap caveat:** the dashboard reads history from QuantumLeap's **default**
+> tenant (it sends `Fiware-ServicePath: /` and no `Fiware-Service`). That matches how
+> this stack currently ingests data, so BioPC/mock charts work. If a tenant's history
+> is ever stored under its own `Fiware-Service`, the charts for that tenant will come
+> up empty until the dashboard image is extended to send a per-tenant `Fiware-Service`.
+
 ### Note on MongoDB version
 
 `fiware/orion-ld` requires MongoDB's wire protocol version 8+ (MongoDB 4.2 or newer) - it will fail to start against older MongoDB (e.g. 3.6, used in some older FIWARE deployment examples) with a `mongocTenantsGet` error. This was confirmed by running the images locally, and `k8s/mongo/deployment.yaml` here is pinned to `mongo:4.4` accordingly.
 
 ## Deployment
+
+> **Deploying to GCP/GKE?** See [`setup-steps.md`](setup-steps.md) for a full step-by-step runbook
+> (cluster creation, the required GKE manifest tweaks, the standalone Postgres database, and
+> verification).
 
 To deploy the components to your Kubernetes cluster, use the _manage.sh_ script provided in the repository:
 
@@ -135,6 +203,8 @@ kubectl apply -f k8s/
 This will apply all the Kubernetes configuration files in the k8s/ directory and its subdirectories. On startup, Orion will register an NGSI-LD subscription (see `k8s/orion/subscriptions-setup.yaml`) that forwards `DeviceMeasurement` updates to QuantumLeap. This is a starting point based on the generic FIWARE Device Smart Data Model — it should be revisited once the DTI tag list is mapped to concrete Smart Data Models.
 
 Grafana (LoadBalancer, port 3000) comes up with its CrateDB datasource and a starter dashboard already provisioned — log in at `admin` / `admin` and the "Device Measurements" dashboard is ready to go, no manual data source setup needed.
+
+Two ZEST Dashboard instances also come up as LoadBalancer services — `dashboard-biopc` (port 8080, tenant `opcua_biopc`) and `dashboard-dti` (port 8081, tenant `dti`). See [ZEST Dashboard (per tenant)](#zest-dashboard-per-tenant) for details. The `dashboard-dti` instance will simply show no data until the DTI connector feeds the `dti` tenant.
 
 ### Mock data
 
